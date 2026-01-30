@@ -3,6 +3,7 @@ version: "3.9"
 services:
   car-management:
     container_name: car-management
+    image: laptruong299/car-management:latest
     build: .
     ports:
       - "8081:8081"
