@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  car-management:
+    container_name: car-management
+    build: .
+    ports:
+      - "8082:8080"
+    depends_on:
+      - rabbitmq
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    networks:
+      - microservice-network
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    networks:
+      - microservice-network
+
+networks:
+  microservice-network:
+    driver: bridge
