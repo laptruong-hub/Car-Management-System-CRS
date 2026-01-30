@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    # QUAN TRỌNG: Dùng 'postgres-car' (tên service) thay vì 'localhost'
+    url: jdbc:postgresql://postgres-car:5432/car_management_db
+    username: postgres
+    password: 123456
+  rabbitmq:
+    # Dùng 'rabbitmq' (tên service)
+    host: rabbitmq
+    port: 5672

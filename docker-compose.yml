@@ -5,11 +5,26 @@ services:
     container_name: car-management
     build: .
     ports:
-      - "8082:8080"
+      - "8081:8081"
     depends_on:
-      - rabbitmq
+      - postgres-car        # Chờ DB khởi động
+      - rabbitmq           # Chờ RabbitMQ khởi động
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      - SPRING_PROFILES_ACTIVE=docker
+      # Bạn có thể ghi đè URL trực tiếp tại đây để chắc chắn
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-car:5432/car_management_db
+    networks:
+      - microservice-network
+
+  postgres-car:
+    image: postgres:15-alpine
+    container_name: postgres-car
+    ports:
+      - "5433:5432"         # Dùng 5433 ở máy thật để tránh trùng với IAM
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: car_management_db
     networks:
       - microservice-network
 
@@ -17,8 +32,8 @@ services:
     image: rabbitmq:3.13-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"    # AMQP
-      - "15672:15672"  # Management UI
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - microservice-network
 
