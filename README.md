@@ -122,7 +122,7 @@ A comprehensive microservice for managing electric vehicle fleets with real-time
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/car-management.git
+   git clone https://github.com/laptruong-hub/Car-Management-System-CRS.git
    cd car-management
    ```
 
@@ -519,7 +519,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Authors
 
-- **Your Name** - *Initial work* - [GitHub](https://github.com/yourusername)
+- **LapTruong** - *Initial work* - [GitHub](https://github.com/laptruong-hub)
 
 ---
 

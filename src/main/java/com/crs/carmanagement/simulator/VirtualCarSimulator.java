@@ -65,19 +65,23 @@ public class VirtualCarSimulator {
                 return;
             }
 
-            log.debug("Simulating {} of {} virtual vehicles...",
-                    vehiclesToSimulate.size(), virtualVehicles.size());
+            log.info("\n" + "=".repeat(80));
+            log.info("🚗 SIMULATOR UPDATE | {} vehicles active | Interval: {}ms",
+                    vehiclesToSimulate.size(), config.getUpdateIntervalMs());
+            log.info("=".repeat(80));
 
             for (Vehicle vehicle : vehiclesToSimulate) {
                 try {
                     simulateSingleVehicle(vehicle);
                 } catch (Exception e) {
-                    log.error("Error simulating vehicle {}: {}", vehicle.getId(), e.getMessage());
+                    log.error("❌ Error simulating vehicle {}: {}", vehicle.getId(), e.getMessage());
                 }
             }
 
+            log.info("-".repeat(80) + "\n");
+
         } catch (Exception e) {
-            log.error("Error in vehicle simulation loop", e);
+            log.error("❌ Error in vehicle simulation loop", e);
         }
     }
 
@@ -146,17 +150,26 @@ public class VirtualCarSimulator {
         request.setBatteryLevel(newBattery);
         request.setIsCharging(false);
 
+        // CRITICAL: If battery reaches 0%, immediately switch to CHARGING
+        if (newBattery == 0) {
+            log.warn(" CRITICAL: Vehicle {} battery depleted! Forcing CHARGING status",
+                    vehicle.getPlateNumber());
+            vehicle.setStatus(VehicleStatus.CHARGING);
+            vehicleRepository.save(vehicle);
+        }
+
         // Increase odometer (5 seconds at current speed)
         double odometerIncrease = speed / 720.0; // km in 5 seconds
         double currentOdometer = currentState.getOdometerKm() != null ? currentState.getOdometerKm() : 0;
         request.setOdometerKm(currentOdometer + odometerIncrease);
 
-        log.debug("Moving vehicle {}: GPS({},{}), Speed: {}, Battery: {}%",
+        log.info("  🚙 {} [IN_USE] | GPS: ({}, {}) | Speed: {} km/h | Battery: {}% | Odo: {} km",
                 vehicle.getPlateNumber(),
-                String.format("%.6f", newLat),
-                String.format("%.6f", newLon),
+                String.format("%.4f", newLat),
+                String.format("%.4f", newLon),
                 String.format("%.1f", speed),
-                newBattery);
+                newBattery,
+                String.format("%.2f", request.getOdometerKm()));
     }
 
     /**
@@ -179,8 +192,11 @@ public class VirtualCarSimulator {
         // Keep odometer same
         request.setOdometerKm(currentState.getOdometerKm());
 
-        log.debug("Charging vehicle {}: Battery: {}% -> {}%",
-                vehicle.getPlateNumber(), currentBattery, newBattery);
+        log.info("  🔌 {} [CHARGING] | Battery: {}% → {}% (+{}%) | Speed: 0 km/h",
+                vehicle.getPlateNumber(),
+                currentBattery,
+                newBattery,
+                (newBattery - currentBattery));
     }
 
     /**
@@ -194,14 +210,19 @@ public class VirtualCarSimulator {
         request.setLongitude(currentState.getLongitude());
         request.setSpeedKmh(0.0);
 
-        // Slight battery drain (standby power consumption)
+        // Battery stays the same (no drain when parked)
         int currentBattery = currentState.getBatteryLevel() != null ? currentState.getBatteryLevel() : 100;
-        int newBattery = Math.max(0, currentBattery - random.nextInt(2)); // 0-1% drain
-        request.setBatteryLevel(newBattery);
+        request.setBatteryLevel(currentBattery); // No change!
         request.setIsCharging(false);
 
         // Odometer stays same
         request.setOdometerKm(currentState.getOdometerKm());
+
+        log.info("  {} [AVAILABLE] | Battery: {}% (stable) | Parked at ({}, {})",
+                vehicle.getPlateNumber(),
+                currentBattery,
+                String.format("%.4f", currentState.getLatitude()),
+                String.format("%.4f", currentState.getLongitude()));
     }
 
     /**
@@ -242,21 +263,37 @@ public class VirtualCarSimulator {
 
         switch (vehicle.getStatus()) {
             case AVAILABLE:
-                // Available → IN_USE (someone rented it)
-                if (currentState.getBatteryLevel() > 20) {
+                // CRITICAL: If battery is 0%, force charging immediately
+                if (currentState.getBatteryLevel() == 0) {
+                    newStatus = VehicleStatus.CHARGING;
+                    log.warn(" CRITICAL: Vehicle {} battery at 0%! Status: AVAILABLE → CHARGING",
+                            vehicle.getPlateNumber());
+                }
+                // Available → IN_USE (someone rented it) - only if battery > 20%
+                else if (currentState.getBatteryLevel() > 20) {
                     newStatus = VehicleStatus.IN_USE;
-                    log.info("🚗 Vehicle {} rented! Status: AVAILABLE → IN_USE", vehicle.getPlateNumber());
+                    log.info(" Vehicle {} rented! Status: AVAILABLE → IN_USE", vehicle.getPlateNumber());
                 }
                 break;
 
             case IN_USE:
-                // IN_USE → AVAILABLE or CHARGING
-                if (random.nextBoolean()) {
-                    newStatus = VehicleStatus.AVAILABLE;
-                    log.info("✅ Vehicle {} returned! Status: IN_USE → AVAILABLE", vehicle.getPlateNumber());
-                } else if (currentState.getBatteryLevel() < 30) {
+                // CRITICAL: If battery is 0%, force charging immediately
+                if (currentState.getBatteryLevel() == 0) {
                     newStatus = VehicleStatus.CHARGING;
-                    log.info("🔌 Vehicle {} needs charging! Status: IN_USE → CHARGING", vehicle.getPlateNumber());
+                    log.warn(" CRITICAL: Vehicle {} battery at 0%! Forcing CHARGING status",
+                            vehicle.getPlateNumber());
+                }
+                // If battery < 30%, needs charging
+                else if (currentState.getBatteryLevel() < 30) {
+                    newStatus = VehicleStatus.CHARGING;
+                    log.info(" Vehicle {} needs charging! Status: IN_USE → CHARGING",
+                            vehicle.getPlateNumber());
+                }
+                // Random trip completion
+                else if (random.nextBoolean()) {
+                    newStatus = VehicleStatus.AVAILABLE;
+                    log.info(" Vehicle {} returned! Status: IN_USE → AVAILABLE",
+                            vehicle.getPlateNumber());
                 }
                 break;
 
@@ -264,7 +301,8 @@ public class VirtualCarSimulator {
                 // CHARGING → AVAILABLE when fully charged
                 if (currentState.getBatteryLevel() >= 95) {
                     newStatus = VehicleStatus.AVAILABLE;
-                    log.info("⚡ Vehicle {} fully charged! Status: CHARGING → AVAILABLE", vehicle.getPlateNumber());
+                    log.info("⚡ Vehicle {} fully charged! Status: CHARGING → AVAILABLE",
+                            vehicle.getPlateNumber());
                 }
                 break;
 
