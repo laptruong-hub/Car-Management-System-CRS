@@ -32,6 +32,13 @@ public class FleetHub {
     @Column(nullable = false)
     private String location;
 
+    // GPS coordinates for the hub
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
     @Column(nullable = false)
     private Integer capacity;
 

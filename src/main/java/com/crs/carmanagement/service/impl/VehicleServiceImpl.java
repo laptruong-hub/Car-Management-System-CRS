@@ -80,9 +80,11 @@ public class VehicleServiceImpl implements VehicleService {
 
         vehicle = vehicleRepository.save(vehicle);
 
-        // Create initial vehicle state
+        // Create initial vehicle state with GPS from fleet hub location
         VehicleState state = VehicleState.builder()
                 .vehicle(vehicle)
+                .latitude(fleetHub.getLatitude()) // Initialize GPS from hub
+                .longitude(fleetHub.getLongitude()) // Initialize GPS from hub
                 .batteryLevel(100) // Default to full battery
                 .isCharging(false)
                 .speedKmh(0.0)
@@ -94,15 +96,23 @@ public class VehicleServiceImpl implements VehicleService {
 
         vehicleStateRepository.save(state);
 
+        // Update fleet hub occupancy
+        fleetHub.setCurrentOccupancy(fleetHub.getCurrentOccupancy() + 1);
+        fleetHubRepository.save(fleetHub);
+
         // Log event (Option B)
         Map<String, Object> eventData = new HashMap<>();
         eventData.put("plateNumber", vehicle.getPlateNumber());
         eventData.put("vin", vehicle.getVin());
         eventData.put("modelId", model.getId());
         eventData.put("isVirtual", vehicle.getIsVirtual());
+        eventData.put("fleetHubId", fleetHub.getId());
+        eventData.put("initialLatitude", fleetHub.getLatitude());
+        eventData.put("initialLongitude", fleetHub.getLongitude());
         eventLogService.logEvent(vehicle.getId(), EventType.VEHICLE_CREATED, eventData);
 
-        log.info("Vehicle created successfully with ID: {}", vehicle.getId());
+        log.info("Vehicle created successfully with ID: {} at hub {} (GPS: {}, {})",
+                vehicle.getId(), fleetHub.getName(), fleetHub.getLatitude(), fleetHub.getLongitude());
         return buildDetailResponse(vehicle);
     }
 
@@ -307,14 +317,26 @@ public class VehicleServiceImpl implements VehicleService {
         return VehicleResponse.builder()
                 .id(vehicle.getId())
                 .plateNumber(vehicle.getPlateNumber())
-                .modelName(vehicle.getModel().getModelName())
-                .brand(vehicle.getModel().getBrand())
                 .color(vehicle.getColor())
                 .status(vehicle.getStatus())
                 .isVirtual(vehicle.getIsVirtual())
-                .batteryLevel(state != null ? state.getBatteryLevel() : null)
-                .fleetHubName(vehicle.getFleetHub() != null ? vehicle.getFleetHub().getName() : null)
                 .odometerKm(vehicle.getOdometerKm())
+                .fleetHubName(vehicle.getFleetHub() != null ? vehicle.getFleetHub().getName() : null)
+                // Nested model info
+                .model(VehicleResponse.ModelInfo.builder()
+                        .id(vehicle.getModel().getId())
+                        .name(vehicle.getModel().getModelName())
+                        .brand(vehicle.getModel().getBrand())
+                        .build())
+                // Nested state info
+                .currentState(state != null ? VehicleResponse.StateInfo.builder()
+                        .latitude(state.getLatitude())
+                        .longitude(state.getLongitude())
+                        .batteryLevel(state.getBatteryLevel())
+                        .isCharging(state.getIsCharging())
+                        .speedKmh(state.getSpeedKmh())
+                        .lastUpdatedAt(state.getLastUpdatedAt())
+                        .build() : null)
                 .build();
     }
 }
